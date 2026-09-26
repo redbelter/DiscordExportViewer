@@ -193,6 +193,7 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>(s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const jp=s=>JSON.stringify(s).replace(/"/g,'&quot;');  // JSON safe inside double-quoted HTML attrs
 const fmt=n=>(n||0).toLocaleString('en-US');
 const COLS=['#5865F2','#3ba55c','#ed4245','#faa61a','#1abc9c','#eb459e','#e67e22','#9b59b6'];
 let PEOPLE=[], filter='all', sel=null, mode='chat', curKey=null, oldest=null, linkHit=null, sort='recent';
@@ -273,8 +274,9 @@ function togglePkgMenu(e){
     setTimeout(()=>document.addEventListener('click',close),0);
   }
 }
-function openPicker(){$('pkgMenu').classList.add('hidden');pkPath=null;browse(null);}
+function openPicker(){$('pkgMenu').classList.add('hidden');$('picker').classList.remove('hidden');pkPath=null;browse(null);}
 function closePicker(){$('picker').classList.add('hidden');}
+addEventListener('load',()=>{if(new URLSearchParams(location.search).get('pick')==='1')openPicker();});
 function resetSetup(){
   $('pkgMenu').classList.add('hidden');
   if(!confirm('Forget the current data package? The app will return to the setup screen.\n\nNothing is deleted from your Discord export folder; your downloaded attachment cache stays on disk.'))return;
@@ -291,11 +293,11 @@ async function browse(path){
   $('pkPick').disabled=!d.is_package;
   $('pkPick').style.opacity=d.is_package?1:.45;
   let html='';
-  if(d.roots)html+=d.roots.map(r=>`<div class="pkid" onclick="browse(${JSON.stringify(r)})">💽 <span>${esc(r)}</span></div>`).join('');
-  if(d.parent)html+=`<div class="pkid" onclick="browse(${JSON.stringify(d.parent)})">⬆ <span class="note">up to ${esc(d.parent)}</span></div>`;
+  if(d.roots)html+=d.roots.map(r=>`<div class="pkid" onclick="browse(${jp(r)})">💽 <span>${esc(r)}</span></div>`).join('');
+  if(d.parent)html+=`<div class="pkid" onclick="browse(${jp(d.parent)})">⬆ <span class="note">up to ${esc(d.parent)}</span></div>`;
   html+=d.dirs.map(n=>{
     const full=(d.path?d.path.replace(/[\\/]+$/,'')+ (/[\\]$/.test(d.path)?'\\':'/') : '')+n;
-    return `<div class="pkid" onclick="browse(${JSON.stringify(full)})">📁 <span>${esc(n)}</span></div>`;
+    return `<div class="pkid" onclick="browse(${jp(full)})">📁 <span>${esc(n)}</span></div>`;
   }).join('');
   $('pkList').innerHTML=html;
 }
@@ -497,11 +499,11 @@ $('galKind').onchange=renderGal; $('galSort').onchange=renderGal;
 let galTimer=null;
 $('galWho').oninput=()=>{clearTimeout(galTimer);galTimer=setTimeout(renderGal,200);};
 document.querySelectorAll('.mtab').forEach(t=>t.onclick=()=>setMode(t.dataset.m));
-document.querySelectorAll('.sbtn').forEach(b=>b.onclick=()=>{
+document.querySelectorAll('.sbtn[data-s]').forEach(b=>b.onclick=()=>{
   sort=b.dataset.s;
   document.querySelectorAll('.sbtn').forEach(x=>x.classList.toggle('on',x===b));
   renderList();});
-document.querySelectorAll('.fbtn').forEach(b=>b.onclick=()=>{
+document.querySelectorAll('.fbtn[data-f]').forEach(b=>b.onclick=()=>{
   filter=b.dataset.f;
   document.querySelectorAll('.fbtn').forEach(x=>x.classList.toggle('on',x===b));
   renderList();});

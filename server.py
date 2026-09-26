@@ -111,6 +111,20 @@ def set_package(pkg):
     if not os.path.isdir(os.path.join(pkg, "Account")):
         raise ValueError("no Account/ folder — point at the main folder inside your request_data.zip")
     prev = CFG.get("package") or CFG.get("last_package")
+    # re-picking the folder that's already indexed with a healthy index → no-op
+    # (avoids a needless rebuild, which would blank the attachment gallery)
+    if prev and os.path.abspath(prev) == os.path.abspath(pkg):
+        try:
+            healthy = con.execute("SELECT COUNT(*) FROM people").fetchone()[0] > 0
+        except Exception:
+            healthy = False
+        if healthy:
+            if CFG.get("package") != os.path.abspath(pkg):   # keep config honest
+                cfg = dict(CFG); cfg["package"] = os.path.abspath(pkg); cfg.pop("last_package", None)
+                with open(os.path.join(HERE, "config.json"), "w", encoding="utf-8") as f:
+                    json.dump(cfg, f, indent=2)
+                CFG.clear(); CFG.update(cfg)
+            return pkg
     cfg = dict(CFG); cfg["package"] = pkg
     cfg.pop("last_package", None)
     with open(os.path.join(HERE, "config.json"), "w", encoding="utf-8") as f:
@@ -190,10 +204,17 @@ class H(BaseHTTPRequestHandler):
                         con.close()
                     except Exception:
                         pass
-                    try:
-                        os.remove(DB)
-                    except OSError:
-                        pass
+                    import time as _t
+                    if os.path.isfile(DB):
+                        # Windows: open handles block delete — rename always works,
+                        # then open_db() creates a fresh EMPTY db at DB
+                        try:
+                            os.replace(DB, DB + ".stale-" + str(int(_t.time())))
+                        except OSError:
+                            try:
+                                os.remove(DB)
+                            except OSError:
+                                pass
                     cfg = dict(CFG)
                     if cfg.get("package"):
                         cfg["last_package"] = cfg["package"]
