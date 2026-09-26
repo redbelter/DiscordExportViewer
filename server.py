@@ -110,12 +110,14 @@ def set_package(pkg):
             raise ValueError("that folder has no Messages/ inside — it isn't an unzipped Discord data package")
     if not os.path.isdir(os.path.join(pkg, "Account")):
         raise ValueError("no Account/ folder — point at the main folder inside your request_data.zip")
-    prev = CFG.get("package")
+    prev = CFG.get("package") or CFG.get("last_package")
     cfg = dict(CFG); cfg["package"] = pkg
+    cfg.pop("last_package", None)
     with open(os.path.join(HERE, "config.json"), "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
     CFG.clear(); CFG.update(cfg)
-    # switching to a DIFFERENT package means the old media cache is stale — clear it
+    # switching to a DIFFERENT package means the old media cache is stale — clear it.
+    # (after /api/reset, package is gone but last_package records the folder the cache belongs to)
     import shutil
     if prev and os.path.abspath(prev) != os.path.abspath(pkg):
         att_dir = os.path.join(HERE, "attachments")
@@ -178,6 +180,29 @@ class H(BaseHTTPRequestHandler):
                         open_db()   # set_package may have closed the handle mid-flight
                         raise
                 return self._send(200, json.dumps({"ok": True, "package": resolved}).encode())
+
+            if p == "/api/reset":
+                # forget the current package → app returns to the setup screen.
+                # attachments are kept (keyed by last_package) so re-picking the same
+                # folder doesn't force a re-download.
+                with db_lock:
+                    try:
+                        con.close()
+                    except Exception:
+                        pass
+                    try:
+                        os.remove(DB)
+                    except OSError:
+                        pass
+                    cfg = dict(CFG)
+                    if cfg.get("package"):
+                        cfg["last_package"] = cfg["package"]
+                    cfg.pop("package", None)
+                    with open(os.path.join(HERE, "config.json"), "w", encoding="utf-8") as f:
+                        json.dump(cfg, f, indent=2)
+                    CFG.clear(); CFG.update(cfg)
+                    open_db()
+                return self._send(200, json.dumps({"ok": True}).encode())
 
             if p == "/api/fetch":
                 proc = FETCH["proc"]

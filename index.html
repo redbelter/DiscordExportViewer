@@ -101,6 +101,9 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
 .pkid{padding:8px 10px;border-radius:7px;cursor:pointer;display:flex;gap:8px;align-items:center;border:1px solid transparent}
 .pkid:hover{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:var(--bd)}
 .pkis{color:var(--green);font-size:11px;margin-left:auto;font-weight:700}
+.pkgmi{padding:9px 14px;cursor:pointer;font-size:13px;color:var(--fg);white-space:nowrap}
+.pkgmi:hover{background:color-mix(in srgb,var(--acc) 16%,transparent)}
+#pkgMenu.hidden{display:none}
 .jump{color:var(--acc2);cursor:pointer;font-size:11px;text-decoration:underline}
 ::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:6px}
 @media (max-width:800px){#side{width:230px}}
@@ -111,7 +114,13 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
   <h1>💬 DM Browser</h1>
   <span class="sub" id="statline">…</span>
   <div class="spacer"></div>
-  <a id="pkgBtn" href="javascript:void 0" onclick="openPicker()" style="color:var(--mut);font-size:12px;text-decoration:none;border:1px solid var(--bd);padding:6px 12px;border-radius:8px" title="choose which Discord data package to read">📁 <span id="pkgLabel">Package…</span></a>
+  <div id="pkgMenuWrap" style="position:relative">
+    <a id="pkgBtn" href="javascript:void 0" onclick="togglePkgMenu();return false" style="color:var(--mut);font-size:12px;text-decoration:none;border:1px solid var(--bd);padding:6px 12px;border-radius:8px" title="data package settings">📁 <span id="pkgLabel">Package…</span> ▾</a>
+    <div id="pkgMenu" class="hidden" style="position:absolute;right:0;top:calc(100% + 6px);background:var(--panel2);border:1px solid var(--bd);border-radius:10px;z-index:150;min-width:230px;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden">
+      <div class="pkgmi" onclick="openPicker()">📂 Choose another folder…</div>
+      <div class="pkgmi" onclick="resetSetup()" style="color:var(--red)">⟲ Reset to setup screen…</div>
+    </div>
+  </div>
   <div id="modeTabs">
     <div class="mtab on" data-m="chat">Chat view</div>
     <div class="mtab" data-m="search">Search all DMs</div>
@@ -256,8 +265,21 @@ function hideSetup(st){
 }
 /* ---------- package picker (server-side folder browser) ---------- */
 let pkPath=null, pkHome=null;
-function openPicker(){pkPath=null;browse(null);}
+function togglePkgMenu(e){
+  const m=$('pkgMenu');
+  m.classList.toggle('hidden');
+  if(!m.classList.contains('hidden')){
+    const close=ev=>{if(!document.getElementById('pkgMenuWrap').contains(ev.target)){m.classList.add('hidden');document.removeEventListener('click',close);}};
+    setTimeout(()=>document.addEventListener('click',close),0);
+  }
+}
+function openPicker(){$('pkgMenu').classList.add('hidden');pkPath=null;browse(null);}
 function closePicker(){$('picker').classList.add('hidden');}
+function resetSetup(){
+  $('pkgMenu').classList.add('hidden');
+  if(!confirm('Forget the current data package? The app will return to the setup screen.\n\nNothing is deleted from your Discord export folder; your downloaded attachment cache stays on disk.'))return;
+  fetch('/api/reset',{method:'POST'}).then(()=>location.reload());
+}
 async function browse(path){
   $('pkList').innerHTML='<div class="loading">reading…</div>';
   let d=await fetch('/api/browse'+(path?`?path=${encodeURIComponent(path)}`:'')).then(r=>r.json());
