@@ -285,8 +285,11 @@ class H(BaseHTTPRequestHandler):
                         roots = drive_roots()
                         return self._send(200, json.dumps(
                             {"path": "", "parent": None, "dirs": [], "roots": roots,
-                             "is_package": False, "home": os.path.expanduser("~")}).encode())
-                    return self._send(200, json.dumps(list_dir(path)).encode())
+                             "is_package": False, "home": os.path.expanduser("~"),
+                             "current": CFG.get("package")}).encode())
+                    d = list_dir(path)
+                    d["current"] = CFG.get("package")
+                    return self._send(200, json.dumps(d).encode())
                 except ValueError as e:
                     return self._send(400, json.dumps({"error": str(e)}).encode())
 

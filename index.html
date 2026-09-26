@@ -100,6 +100,7 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
 #setup{flex:1;display:flex;align-items:center;justify-content:center;padding:30px}
 .pkid{padding:8px 10px;border-radius:7px;cursor:pointer;display:flex;gap:8px;align-items:center;border:1px solid transparent}
 .pkid:hover{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:var(--bd)}
+.pkcur{background:color-mix(in srgb,var(--green) 10%,transparent);border-color:color-mix(in srgb,var(--green) 35%,transparent)!important}
 .pkis{color:var(--green);font-size:11px;margin-left:auto;font-weight:700}
 .pkgmi{padding:9px 14px;cursor:pointer;font-size:13px;color:var(--fg);white-space:nowrap}
 .pkgmi:hover{background:color-mix(in srgb,var(--acc) 16%,transparent)}
@@ -179,6 +180,7 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
  <div style="width:min(680px,92vw);max-height:80vh;background:var(--panel);border:1px solid var(--bd);border-radius:14px;display:flex;flex-direction:column;overflow:hidden">
   <div style="padding:14px 18px;border-bottom:1px solid var(--bd)">
     <b>Where is your Discord data package?</b>
+    <div id="pkCurrent" class="note" style="margin-top:2px"></div>
     <div class="note" style="margin-top:4px">Pick the folder you extracted from <span class="mono">request_data.zip</span> — the one that contains <span class="mono">Messages/</span> and <span class="mono">Account/</span>.</div>
     <div id="pkPath" class="mono" style="margin-top:8px;font-size:12px;color:var(--acc2);word-break:break-all"></div>
   </div>
@@ -193,6 +195,7 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>(s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const nrm2=s=>s.replace(/[\\/]+/g,'\\\\').replace(/[\\\\]+$/,'').toLowerCase();
 const jp=s=>JSON.stringify(s).replace(/"/g,'&quot;');  // JSON safe inside double-quoted HTML attrs
 const fmt=n=>(n||0).toLocaleString('en-US');
 const COLS=['#5865F2','#3ba55c','#ed4245','#faa61a','#1abc9c','#eb459e','#e67e22','#9b59b6'];
@@ -265,7 +268,7 @@ function hideSetup(st){
   $('side').classList.remove('hidden');$('chat').classList.remove('hidden');
 }
 /* ---------- package picker (server-side folder browser) ---------- */
-let pkPath=null, pkHome=null;
+let pkPath=null, pkHome=null, pkCurrent=null;
 function togglePkgMenu(e){
   const m=$('pkgMenu');
   m.classList.toggle('hidden');
@@ -276,7 +279,7 @@ function togglePkgMenu(e){
 }
 function openPicker(){$('pkgMenu').classList.add('hidden');$('picker').classList.remove('hidden');pkPath=null;browse(null);}
 function closePicker(){$('picker').classList.add('hidden');}
-addEventListener('load',()=>{if(new URLSearchParams(location.search).get('pick')==='1')openPicker();});
+addEventListener('load',()=>{const u=new URL(location);if(u.searchParams.get('pick')==='1'){u.searchParams.delete('pick');history.replaceState(null,'',u);openPicker();}});
 function resetSetup(){
   $('pkgMenu').classList.add('hidden');
   if(!confirm('Forget the current data package? The app will return to the setup screen.\n\nNothing is deleted from your Discord export folder; your downloaded attachment cache stays on disk.'))return;
@@ -289,15 +292,20 @@ async function browse(path){
   if(!path&&d.home){pkHome=d.home;const hd=await fetch(`/api/browse?path=${encodeURIComponent(d.home)}`).then(r=>r.json());if(!hd.error)d=hd;}
   pkPath=d.path||pkPath;
   $('pkPath').textContent=d.path||'';
-  $('pkMsg').textContent=d.is_package?'✓ this is a valid data package — click "Use this folder"':'';
-  $('pkPick').disabled=!d.is_package;
-  $('pkPick').style.opacity=d.is_package?1:.45;
+  pkCurrent=d.current||null;
+  $('pkCurrent').innerHTML=pkCurrent?('Currently loaded: <span class="mono" style="color:var(--acc2)">'+esc(pkCurrent)+'</span>'):'<span style="color:var(--red)">Nothing loaded yet — pick a folder containing Messages/ + Account/</span>';
+  $('pkMsg').textContent=d.is_package?(pkPath&&pkCurrent&&pkPath.replace(/[\\/]+/g,'\\\\').replace(/[\\\\]+$/,'').toLowerCase()===pkCurrent.replace(/[\\/]+/g,'\\\\').replace(/[\\\\]+$/,'').toLowerCase()?'✓ this package is already loaded':'✓ this is a valid data package — click "Use this folder"'):'';
+  const alreadyLoaded=d.is_package&&pkPath&&pkCurrent&&nrm2(pkPath)===nrm2(pkCurrent);
+  $('pkPick').disabled=!d.is_package||alreadyLoaded;
+  $('pkPick').style.opacity=(d.is_package&&!alreadyLoaded)?1:.45;
+  $('pkPick').textContent=alreadyLoaded?'✓ already loaded':'📂 Use this folder';
   let html='';
   if(d.roots)html+=d.roots.map(r=>`<div class="pkid" onclick="browse(${jp(r)})">💽 <span>${esc(r)}</span></div>`).join('');
   if(d.parent)html+=`<div class="pkid" onclick="browse(${jp(d.parent)})">⬆ <span class="note">up to ${esc(d.parent)}</span></div>`;
   html+=d.dirs.map(n=>{
     const full=(d.path?d.path.replace(/[\\/]+$/,'')+ (/[\\]$/.test(d.path)?'\\':'/') : '')+n;
-    return `<div class="pkid" onclick="browse(${jp(full)})">📁 <span>${esc(n)}</span></div>`;
+    const isCur=pkCurrent&&nrm2(full)===nrm2(pkCurrent);
+    return `<div class="pkid${isCur?' pkcur':''}" onclick="browse(${jp(full)})">📁 <span>${esc(n)}</span>${isCur?'<span class="pkis">● loaded</span>':''}</div>`;
   }).join('');
   $('pkList').innerHTML=html;
 }
