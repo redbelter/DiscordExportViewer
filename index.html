@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DM Browser</title>
+<style>
+:root{
+  --bg:#0b0d13; --panel:#12151f; --panel2:#171b28; --fg:#e7e9ee; --mut:#8b93a5;
+  --bd:#242938; --acc:#5865F2; --acc2:#8b93ff; --green:#3ba55c; --gold:#faa61a; --red:#ed4245;
+  --accent:#5865F2;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 "Segoe UI",system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--bd);background:var(--panel);flex:none}
+header h1{font-size:16px;margin:0}
+header .sub{color:var(--mut);font-size:12px}
+header .spacer{flex:1}
+#modeTabs{display:flex;gap:6px}
+.mtab{padding:6px 14px;border-radius:8px;border:1px solid var(--bd);cursor:pointer;color:var(--mut);font-weight:600;font-size:13px;background:var(--panel2)}
+.mtab.on{background:var(--acc);border-color:var(--acc);color:#fff}
+main{flex:1;display:flex;min-height:0}
+/* sidebar */
+#side{width:320px;flex:none;border-right:1px solid var(--bd);display:flex;flex-direction:column;background:var(--panel);min-height:0}
+#sideTop{padding:10px;border-bottom:1px solid var(--bd);flex:none}
+#q{width:100%;padding:8px 11px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);font-size:13px}
+.filters{display:flex;gap:6px;margin-top:8px}
+.fbtn{flex:1;text-align:center;padding:4px 0;border-radius:6px;border:1px solid var(--bd);color:var(--mut);cursor:pointer;font-size:12px;font-weight:600}
+.fbtn.on{border-color:var(--acc);color:var(--fg);background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.sortrow{display:flex;gap:6px;margin-top:8px;align-items:center}
+.sortlbl{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;flex:none}
+.sbtn{flex:1;text-align:center;padding:4px 0;border-radius:6px;border:1px solid var(--bd);color:var(--mut);cursor:pointer;font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden}
+.sbtn.on{border-color:var(--acc);color:var(--fg);background:color-mix(in srgb,var(--acc) 16%,transparent)}
+#plist{flex:1;overflow-y:auto}
+.prow{display:flex;gap:10px;padding:9px 12px;cursor:pointer;border-bottom:1px solid color-mix(in srgb,var(--bd) 45%,transparent);align-items:center}
+.prow:hover{background:color-mix(in srgb,var(--acc) 9%,transparent)}
+.prow.on{background:color-mix(in srgb,var(--acc) 18%,transparent);border-left:3px solid var(--acc);padding-left:9px}
+.av{width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;color:#fff}
+.pi{min-width:0;flex:1}
+.pn{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ps{font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pn-c{text-align:right;flex:none;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px}
+.d-a{background:var(--green)}.d-q{background:var(--gold)}.d-d{background:var(--red)}
+/* chat pane */
+#chat{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+#chatHead{padding:12px 18px;border-bottom:1px solid var(--bd);background:var(--panel);flex:none}
+#chatHead .t{font-size:17px;font-weight:800}
+#chatHead .s{font-size:12px;color:var(--mut)}
+#msgs{flex:1;overflow-y:auto;padding:18px 6%}
+.daysep{text-align:center;color:var(--mut);font-size:11.5px;margin:14px 0 10px;display:flex;align-items:center;gap:10px}
+.daysep::before,.daysep::after{content:"";flex:1;height:1px;background:var(--bd)}
+.msg{display:flex;gap:10px;margin:7px 0}
+.msg .av{margin-top:2px}
+.mbody{background:var(--panel2);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;max-width:760px}
+.mine .av{color:#fff;font-size:10.5px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.mine .mbody{background:color-mix(in srgb,var(--accent) 12%,var(--panel2));border-color:color-mix(in srgb,var(--accent) 35%,var(--bd))}
+.who-me{color:var(--accent)}
+.mmeta{font-size:11px;color:var(--mut);margin-bottom:3px}
+.mtext{white-space:pre-wrap;word-break:break-word}
+.mtext a{color:var(--acc2)}
+.mtext a{color:var(--acc2)}
+.mbody .media{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.mbody .media img,.mbody .media video{max-width:min(420px,100%);max-height:320px;border-radius:8px;border:1px solid var(--bd);cursor:zoom-in;display:block}
+.mbody .media .filechip{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--fg);text-decoration:none;font-size:12.5px}
+.mbody .media .filechip:hover{border-color:var(--acc)}
+.mbody .media .missing{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border:1px dashed var(--bd);border-radius:8px;color:var(--mut);font-size:12px}
+#lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:100;display:none;align-items:center;justify-content:center;cursor:zoom-out}
+#lightbox img,#lightbox video{max-width:96vw;max-height:96vh;border-radius:6px}
+#gal{flex:1;display:flex;flex-direction:column;min-width:0}
+.galbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--bd);background:var(--panel);flex-wrap:wrap;flex:none}
+.galbar select{padding:6px 8px;border-radius:7px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);font-size:12.5px}
+#galGrid{flex:1;overflow-y:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;align-content:start;grid-auto-rows:188px}
+.gcell{position:relative;border:1px solid var(--bd);border-radius:10px;overflow:hidden;background:var(--panel);cursor:zoom-in;height:186px;display:flex;flex-direction:column}
+.gcell img,.gcell video{width:100%;height:150px;object-fit:cover;display:block;background:#000}
+.gcell .gdoc{height:150px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--mut);text-align:center;padding:8px;word-break:break-all}
+.gcell .gcap{padding:6px 8px;font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gcell .gcap b{color:var(--fg)}
+.gcell .gbig{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.65);color:#fff;font-size:10px;padding:2px 6px;border-radius:5px}
+.blurmed{filter:blur(28px) saturate(.55);cursor:pointer}
+img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
+.spoil-chip{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.75);color:#fff;font-size:10px;padding:2px 7px;border-radius:5px;z-index:2}
+.attflag{display:inline-block;font-size:10.5px;background:color-mix(in srgb,var(--acc) 20%,transparent);color:var(--acc2);padding:1px 7px;border-radius:6px;margin-top:4px}
+.hl{color:#000;background:var(--gold);border-radius:3px;padding:0 2px}
+.loading,.empty{color:var(--mut);text-align:center;padding:26px}
+#loadMore{margin:10px auto;display:block;padding:7px 18px;border-radius:8px;border:1px solid var(--bd);background:var(--panel2);color:var(--mut);cursor:pointer;font-size:12.5px}
+#loadMore:hover{color:var(--fg);border-color:var(--acc)}
+/* search results */
+#sres{flex:1;overflow-y:auto;padding:16px 5%;display:none}
+.sres-row{border:1px solid var(--bd);border-radius:10px;background:var(--panel);padding:10px 14px;margin-bottom:8px;cursor:pointer}
+.sres-row:hover{border-color:var(--acc)}
+.sres-meta{font-size:12px;color:var(--mut);margin-bottom:3px}
+.sres-meta b{color:var(--acc2)}
+.sres-snippet{font-size:13.5px}
+.sres-snippet b{background:color-mix(in srgb,var(--gold) 75%,#fff);color:#000;border-radius:3px;padding:0 2px}
+#side.hidden,#chat.hidden,#sres.hidden,#gal.hidden{display:none}
+.jump{color:var(--acc2);cursor:pointer;font-size:11px;text-decoration:underline}
+::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:6px}
+@media (max-width:800px){#side{width:230px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>💬 DM Browser</h1>
+  <span class="sub" id="statline">…</span>
+  <div class="spacer"></div>
+  <div id="modeTabs">
+    <div class="mtab on" data-m="chat">Chat view</div>
+    <div class="mtab" data-m="search">Search all DMs</div>
+    <div class="mtab" data-m="gallery">📷 Gallery</div>
+  </div>
+</header>
+<main>
+  <div id="side">
+    <div id="sideTop">
+      <input id="q" placeholder="Filter conversations… (1/3 = 1st/3rd)">
+      <div class="filters">
+        <div class="fbtn on" data-f="all">All</div>
+        <div class="fbtn" data-f="dm">DM</div>
+        <div class="fbtn" data-f="group">Group</div>
+        <div class="fbtn" data-f="guild">Server</div>
+        <div class="fbtn" data-f="act">Active</div>
+      </div>
+      <div class="sortrow">
+        <span class="sortlbl">Sort</span>
+        <div class="sbtn on" data-s="recent">🕐 Recent</div>
+        <div class="sbtn" data-s="volume">📊 Most msgs</div>
+        <div class="sbtn" data-s="az">🔤 A–Z</div>
+      </div>
+    </div>
+    <div id="plist"></div>
+  </div>
+  <div id="chat">
+    <div id="chatHead"><div class="t">Pick a conversation</div><div class="s"></div></div>
+    <div id="msgs"><div class="empty">← select a person to read the full DM history.<br>Switch to “Search all DMs” to grep everything at once.</div></div>
+  </div>
+  <div id="sres" class="hidden"></div>
+  <div id="gal" class="hidden">
+    <div class="galbar">
+      <div id="galStat" class="note"></div>
+      <div id="galCrumb" style="font-weight:800"></div>
+      <button id="galBack" class="selbtn" style="display:none">← all people</button>
+      <select id="galKind"><option value="img">Images</option><option value="vid">Videos</option><option value="aud">Audio</option><option value="doc">Files</option></select>
+      <select id="galSort"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="big">Largest first</option></select>
+      <input id="galWho" placeholder="filter by person…" style="width:180px;padding:6px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);font-size:12.5px">
+    </div>
+    <div id="galGrid"></div>
+  </div>
+</main>
+<div id="lightbox" onclick="this.style.display='none';this.querySelector('video')&&this.querySelector('video').pause()">
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>(s||"").replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt=n=>(n||0).toLocaleString('en-US');
+const COLS=['#5865F2','#3ba55c','#ed4245','#faa61a','#1abc9c','#eb459e','#e67e22','#9b59b6'];
+let PEOPLE=[], filter='all', sel=null, mode='chat', curKey=null, oldest=null, linkHit=null, sort='recent';
+
+function timeago(ts){
+  const d=(Date.now()-new Date(ts.replace(' ','T')+'Z'))/8.64e7;
+  if(d<1)return 'today';if(d<2)return 'yesterday';
+  if(d<30)return Math.floor(d)+'d ago';if(d<365)return Math.floor(d/30)+'mo ago';
+  return (d/365).toFixed(1)+'y ago';
+}
+
+function status(last){
+  const d=(Date.now()-new Date(last))/8.64e7;
+  return d<=35?['a','active']:d<=180?['q','quiet']:['d','dormant'];
+}
+function initials(n){return n.split(/[\s·.]+/).filter(x=>/[a-z0-9]/i.test(x)).slice(0,2).map(x=>x[0].toUpperCase()).join('')||'?';}
+function hue(n){let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))>>>0;return COLS[h%COLS.length];}
+function linkify(t){return esc(t).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>');}
+function dstr(ts){return new Date(ts.replace(' ','T')+'Z').toLocaleDateString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric'});}
+function tstr(ts){return ts.slice(11,16);}
+function mbs(n){return n>1048576?(n/1048576).toFixed(1)+' MB':(n/1024).toFixed(0)+' KB';}
+const IMG_EXT=['png','jpg','jpeg','gif','webp','avif'];
+const VID_EXT=['mp4','webm','mov'];
+const AUD_EXT=['m4a','aac','mp3'];
+function mediaHTML(m){
+  const atts=(m.atts||[]).filter(a=>a.file||a.status!=='pending');
+  if(!atts.length) return m.attach?'<span class="attflag">📎 attachment</span>':'';
+  const parts=atts.map(a=>{
+    const fn=(a.file||a.url||'').split('?')[0].split('/').pop();
+    const sp=/SPOILER/i.test(fn);                       // Discord spoiler tag
+    const ext=fn.split('.').pop().toLowerCase();
+    const blur=sp?' blurmed':'';
+    const title=sp?'title="spoiler — click to reveal"':'';
+    const lbjs=sp?`lb(this.src,'img',true)`:`lb(this.src,'img')`;
+    if(a.file&&IMG_EXT.includes(ext))
+      return `<img class="${blur}" loading="lazy" ${title} src="/file?f=${encodeURIComponent(a.file)}" onclick="event.stopPropagation();${lbjs}">`;
+    if(a.file&&VID_EXT.includes(ext))
+      return `<video class="${blur}" ${title} onclick="event.stopPropagation();this.classList.remove('blurmed')" preload="none" controls src="/file?f=${encodeURIComponent(a.file)}"></video>`;
+    if(a.file&&AUD_EXT.includes(ext))
+      return `<audio controls src="/file?f=${encodeURIComponent(a.file)}" style="width:100%;max-width:320px"></audio>`;
+    if(a.status==='ok')
+      return `<a class="filechip" href="/file?f=${encodeURIComponent(a.file)}" download>📄 ${esc(fn)} · ${mbs(a.bytes||0)}</a>`;
+    if((a.status||'').startsWith('fail'))
+      return `<span class="missing">⛔️ expired on Discord CDN (${esc(a.status)})</span>`;
+    return `<span class="missing">⏳ downloading…</span>`;
+  });
+  return `<div class="media">${parts.join('')}</div>`;
+}
+function lb(src,type,spoiler){const box=$('lightbox');
+  box.innerHTML=type==='img'?`<img class="${spoiler?'blurmed':''}" ${spoiler?'title="spoiler — click to reveal"':''} src="${src}" onclick="this.classList.remove('blurmed')">`:'';
+  box.style.display='flex';}
+
+async function boot(){
+  const [st,pe]=await Promise.all([
+    fetch('/api/stats').then(r=>r.json()),
+    fetch('/api/people').then(r=>r.json())]);
+  PEOPLE=pe;
+  $('statline').textContent=`${fmt(st.m)} messages · ${pe.length} conversations · indexed locally`;
+  renderList();
+}
+function renderList(){
+  const q=$('q').value.trim().toLowerCase();
+  let rows=PEOPLE.filter(p=>{
+    if(filter==='dm'&&p.kind!=='dm')return false;
+    if(filter==='group'&&p.kind!=='group')return false;
+    if(filter==='guild'&&p.kind!=='guild')return false;
+    if(filter==='act'&&status(p.last)[0]!=='a')return false;
+    if(q&&!(p.name2.toLowerCase().includes(q)||p.name.toLowerCase().includes(q)))return false;
+    return true;});
+  if(sort==='recent')rows=rows.slice().sort((a,b)=>b.last.localeCompare(a.last));
+  else if(sort==='volume')rows=rows.slice().sort((a,b)=>b.n-a.n);
+  else rows=rows.slice().sort((a,b)=>a.name2.localeCompare(b.name2));
+  $('plist').innerHTML=rows.map(p=>{
+    const [c,l]=status(p.last);
+    const sub=sort==='recent'
+      ? `${timeago(p.last)} · ${p.first.slice(0,7)} → ${p.last.slice(0,10)}`
+      : `<span class="dot d-${c}"></span>${l} · ${p.first.slice(0,7)} → ${p.last.slice(0,10)}`;
+    return `<div class="prow ${sel===p.key?'on':''}" data-k="${esc(p.key)}">
+      <div class="av" style="background:${hue(p.name2)}">${esc(initials(p.name2))}</div>
+      <div class="pi"><div class="pn">${esc(p.name2)}</div>
+        <div class="ps">${sub}</div></div>
+      <div class="pn-c">${fmt(p.n)}</div></div>`;}).join('')||'<div class="empty">none</div>';
+  $('plist').querySelectorAll('.prow').forEach(r=>r.onclick=()=>openDM(r.dataset.k));
+}
+async function openDM(key, jumpId){
+  sel=key; renderList();
+  const p=PEOPLE.find(x=>x.key===key);
+  curKey=key; oldest=null;
+  $('chatHead').querySelector('.t').textContent=p.name2+(p.kind==='group'?' (group)':'');
+  $('chatHead').querySelector('.s').innerHTML=`${fmt(p.n)} messages · ${p.first.slice(0,10)} → ${p.last.slice(0,10)} · ${p.att} attachments · ${p.links} links
+    <div class="note" style="margin-top:4px">⚠️ Discord's export contains <b>only YOUR side</b> of this conversation — every message below is one you sent. Their replies were never in the package.</div>`;
+  $('msgs').innerHTML='<div class="loading">loading…</div>';
+  const url=jumpId?`/api/messages?key=${encodeURIComponent(key)}&around=${jumpId}`
+                  :`/api/messages?key=${encodeURIComponent(key)}&limit=120`;
+  const d=await fetch(url).then(r=>r.json());
+  oldest=d.msgs.length?d.msgs[0].ts:null;
+  drawMsgs(d.msgs, d.has_more, p);
+  if(jumpId) requestAnimationFrame(()=>{const el=document.getElementById('m'+jumpId);
+    if(el){el.scrollIntoView({block:'center'});el.style.outline='2px solid var(--gold)';setTimeout(()=>el.style.outline='',2500);}});
+}
+function drawMsgs(msgs, more, p){
+  $('msgs').innerHTML=msgsHTML(msgs,p,more)||'<div class="empty">no messages</div>';
+  $('msgs').scrollTop=msgs.length?$('msgs').scrollHeight:0;
+}
+/* one delegated handler so prepended buttons keep working */
+$('msgs').addEventListener('click', async e=>{
+  if(!e.target||e.target.id!=='loadMore')return;
+  const p=PEOPLE.find(x=>x.key===curKey); if(!p)return;
+  const box=$('msgs');const prevH=box.scrollHeight;
+  const d=await fetch(`/api/messages?key=${encodeURIComponent(curKey)}&before=${encodeURIComponent(oldest)}&limit=120`).then(r=>r.json());
+  if(!d.msgs.length)return;
+  oldest=d.msgs[0].ts;
+  const oldBtn=box.querySelector('#loadMore'); if(oldBtn)oldBtn.remove();
+  box.insertAdjacentHTML('afterbegin', msgsHTML(d.msgs,p,d.has_more));
+  box.scrollTop=box.scrollHeight-prevH;
+});
+function msgsHTML(msgs,p,more){
+  let html=more?'<button id="loadMore">⬆ load earlier messages</button>':'';
+  let day='';
+  for(const m of msgs){
+    const d=m.ts.slice(0,10);
+    if(d!==day){day=d;html+=`<div class="daysep">${dstr(m.ts)}</div>`;}
+    const me=(m.author||'me')==='me';
+    const av=`<div class="av" style="background:${me?'var(--accent)':hue(p.name2)}">${me?'me':esc(initials(p.name2))}</div>`;
+    html+=`<div class="msg ${me?'mine':'theirs'}" id="m${m.id}">${av}<div class="mbody">
+      <div class="mmeta"><b class="${me?'who-me':''}">${me?'You':esc(p.name2)}</b> · ${tstr(m.ts)}</div>
+      <div class="mtext">${linkify(m.contents)||'<i class=note>(empty)</i>'}</div>
+      ${mediaHTML(m)}</div></div>`;
+  }
+  return html;
+}
+/* ---------- global search ---------- */
+let sTimer=null;
+$('q').addEventListener('input',()=>{
+  renderList();
+  if(mode==='search'){clearTimeout(sTimer);sTimer=setTimeout(runSearch,250);}
+});
+async function runSearch(){
+  const q=$('q').value.trim();
+  const box=$('sres');
+  if(q.length<2){box.innerHTML='<div class="empty">type ≥2 chars to search all 134k DM messages…</div>';return;}
+  box.innerHTML='<div class="loading">searching…</div>';
+  const rows=await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=100`).then(r=>r.json());
+  box.innerHTML=`<div class="loading" style="text-align:left;padding:0 0 10px">${rows.length} matches (showing up to 100) — click one to open the DM at that message</div>`+
+    rows.map(r=>`<div class="sres-row" data-k="${esc(r.key)}" data-id="${r.id}">
+      <div class="sres-meta"><b>${esc(r.name2)}</b> · ${r.ts.slice(0,10)} ${r.ts.slice(11,16)}</div>
+      <div class="sres-snippet">${r.snip}</div></div>`).join('');
+  box.querySelectorAll('.sres-row').forEach(el=>el.onclick=()=>{
+    setMode('chat');
+    openDM(el.dataset.k, el.dataset.id);
+  });
+}
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.mtab').forEach(t=>t.classList.toggle('on',t.dataset.m===m));
+  $('sres').classList.toggle('hidden',m!=='search');
+  $('gal').classList.toggle('hidden',m!=='gallery');
+  $('chat').classList.toggle('hidden',m==='search'||m==='gallery');
+  $('side').classList.toggle('hidden',m==='gallery');
+  if(m==='search'){
+    $('q').placeholder='Search ALL DM messages (FTS, prefix terms)…';
+    runSearch();
+  }else{
+    $('q').placeholder='Filter conversations… (1/3 = 1st/3rd)';
+  }
+  if(m==='gallery') loadGallery();
+}
+/* ---------- gallery (per person) ---------- */
+let GAL=null, galPerson=null;
+function extOf(f){return (f||'').split('?')[0].split('/').pop().split('.').pop().toLowerCase();}
+function kindOf(f){const e=extOf(f);
+  if(IMG_EXT.includes(e))return'img';if(VID_EXT.includes(e))return'vid';
+  if(AUD_EXT.includes(e))return'aud';return'doc';}
+async function loadGallery(){
+  if(!GAL){
+    $('galGrid').innerHTML='<div class="loading" style="grid-column:1/-1">loading gallery…</div>';
+    GAL=await fetch('/api/gallery').then(r=>r.json());
+  }
+  renderGal();
+}
+function galRows(who){
+  const kind=$('galKind').value, sort=$('galSort').value, q=$('galWho').value.trim().toLowerCase();
+  let rows=GAL.filter(g=>kindOf(g.file)===kind&&(!q||g.name2.toLowerCase().includes(q)));
+  if(who)rows=rows.filter(g=>g.key===who);
+  if(sort==='new')rows.sort((a,b)=>b.ts.localeCompare(a.ts));
+  if(sort==='old')rows.sort((a,b)=>a.ts.localeCompare(b.ts));
+  if(sort==='big')rows.sort((a,b)=>(b.bytes||0)-(a.bytes||0));
+  return rows;
+}
+function renderGal(){
+  if(galPerson) renderGalPerson(); else renderGalPeople();
+}
+/* level 1: everyone with media, as cover-collage cards */
+function renderGalPeople(){
+  galPerson=null;
+  $('galCrumb').textContent=''; $('galBack').style.display='none';
+  const q=$('galWho').value.trim().toLowerCase();
+  const kind=$('galKind').value;
+  const byKey={};
+  for(const g of GAL){
+    if(kindOf(g.file)!==kind)continue;
+    if(q&&!g.name2.toLowerCase().includes(q))continue;
+    (byKey[g.key]=byKey[g.key]||{name:g.name2,n:0,bytes:0,cover:null}).n++;
+    byKey[g.key].bytes+=g.bytes||0;
+    if(!byKey[g.key].cover&&kindOf(g.file)==='img'&&!/SPOILER/i.test(g.file))byKey[g.key].cover=g;
+  }
+  const people=Object.entries(byKey).sort((a,b)=>b[1].n-a[1].n);
+  const tot=people.reduce((s,[,p])=>s+p.n,0);
+  $('galStat').textContent=`${people.length} people with ${(kind==='img'?'images':kind==='vid'?'videos':kind==='aud'?'clips':'files')} · ${fmt(tot)} total`;
+  const html=people.map(([key,p])=>{
+    const c=p.cover?`<img loading="lazy" src="/file?f=${encodeURIComponent(p.cover.file)}">`:
+      `<div class="gdoc">${p.n} ${kind==='doc'?'files':'media'}</div>`;
+    return `<div class="gcell gpcell" onclick="galOpen('${esc(key)}')">
+      ${c}
+      <div class="gcap"><b>${esc(p.name)}</b> · ${fmt(p.n)} · ${mbs(p.bytes)}</div>
+    </div>`;}).join('');
+  $('galGrid').innerHTML=html||'<div class="empty" style="grid-column:1/-1">nothing matches</div>';
+}
+/* level 2: one person's media */
+function renderGalPerson(){
+  const rows=galRows(galPerson);
+  const p=PEOPLE.find(x=>x.key===galPerson)||{name2:'?'};
+  $('galCrumb').textContent=`🖼 ${p.name2}`;
+  $('galBack').style.display='';
+  const kind=$('galKind').value;
+  const tot=rows.reduce((s,g)=>s+(g.bytes||0),0);
+  $('galStat').textContent=`${fmt(rows.length)} ${kind==='img'?'images':kind==='vid'?'videos':kind==='aud'?'clips':'files'} · ${mbs(tot)}`;
+  const html=rows.map(g=>{
+    const k=kindOf(g.file);
+    const sp=/SPOILER/i.test(g.file);
+    const chip=sp?'<div class="spoil-chip">🔒 spoiler</div>':'';
+    const bm=sp?' blurmed':'';
+    const inner=k==='img'?`<img class="${bm}" loading="lazy" src="/file?f=${encodeURIComponent(g.file)}" onclick="event.stopPropagation();lb(this.src,'img',${sp})">`
+      :k==='vid'?`<video class="${bm}" preload="metadata" controls onclick="event.stopPropagation();this.classList.remove('blurmed')" src="/file?f=${encodeURIComponent(g.file)}"></video>`
+      :k==='aud'?`<div class="gdoc" onclick="event.stopPropagation()"><audio controls src="/file?f=${encodeURIComponent(g.file)}" style="width:95%"></audio></div>`
+      :`<div class="gdoc">📄 ${esc(g.file.split('/').pop())}</div>`;
+    const openable=k==='doc';
+    return `<div class="gcell" ${openable?`onclick="window.open('/file?f=${encodeURIComponent(g.file)}')"`:''}>
+      ${chip}
+      ${g.bytes>524288?`<div class="gbig">${mbs(g.bytes)}</div>`:''}
+      ${inner}
+      <div class="gcap"><b>${esc(g.name2)}</b> · ${g.ts.slice(0,10)} ${g.ts.slice(11,16)} · <a href="#" onclick="event.preventDefault();event.stopPropagation();setMode('chat');openDM('${esc(g.key)}',${g.id})">open chat</a></div>
+    </div>`;}).join('');
+  $('galGrid').innerHTML=html||'<div class="empty" style="grid-column:1/-1">no media for this person</div>';
+}
+window.galOpen=key=>{galPerson=key;renderGal();$('galGrid').scrollTop=0;};
+$('galBack').onclick=()=>{galPerson=null;renderGal();};
+$('galKind').onchange=renderGal; $('galSort').onchange=renderGal;
+let galTimer=null;
+$('galWho').oninput=()=>{clearTimeout(galTimer);galTimer=setTimeout(renderGal,200);};
+document.querySelectorAll('.mtab').forEach(t=>t.onclick=()=>setMode(t.dataset.m));
+document.querySelectorAll('.sbtn').forEach(b=>b.onclick=()=>{
+  sort=b.dataset.s;
+  document.querySelectorAll('.sbtn').forEach(x=>x.classList.toggle('on',x===b));
+  renderList();});
+document.querySelectorAll('.fbtn').forEach(b=>b.onclick=()=>{
+  filter=b.dataset.f;
+  document.querySelectorAll('.fbtn').forEach(x=>x.classList.toggle('on',x===b));
+  renderList();});
+boot();
+</script>
+</body>
+</html>
