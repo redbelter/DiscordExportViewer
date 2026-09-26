@@ -15,6 +15,23 @@ Works on Windows, macOS, Linux. Requires **Python 3.8+** (nothing else to instal
 
 ---
 
+## What you get
+
+### Chat view — every conversation, honest one-sided labels
+![chat](docs/screenshots/chat.png)
+
+### Instant full-text search over every message
+![search](docs/screenshots/search.png)
+
+### Gallery — per person, newest first
+![gallery](docs/screenshots/gallery_people.png)
+![person](docs/screenshots/gallery_person.png)
+
+### Spoiler-aware previews — blurred until you click
+![spoiler](docs/screenshots/spoiler.png)
+
+*(All screenshots use a synthetic demo package — fake users, generated images.)*
+
 ## Quick start
 
 1. **Request your data** in Discord:
