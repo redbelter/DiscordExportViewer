@@ -117,7 +117,8 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
   <div class="spacer"></div>
   <div id="pkgMenuWrap" style="position:relative">
     <a id="pkgBtn" href="javascript:void 0" onclick="togglePkgMenu();return false" style="color:var(--mut);font-size:12px;text-decoration:none;border:1px solid var(--bd);padding:6px 12px;border-radius:8px" title="data package settings">📁 <span id="pkgLabel">Package…</span> ▾</a>
-    <div id="pkgMenu" class="hidden" style="position:absolute;right:0;top:calc(100% + 6px);background:var(--panel2);border:1px solid var(--bd);border-radius:10px;z-index:150;min-width:230px;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden">
+    <div id="pkgMenu" class="hidden" style="position:absolute;right:0;top:calc(100% + 6px);background:var(--panel2);border:1px solid var(--bd);border-radius:10px;z-index:150;min-width:250px;max-width:360px;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden">
+      <div id="pkgCur" style="padding:9px 14px;border-bottom:1px solid var(--bd);cursor:default"></div>
       <div class="pkgmi" onclick="openPicker()">📂 Choose another folder…</div>
       <div class="pkgmi" onclick="resetSetup()" style="color:var(--red)">⟲ Reset to setup screen…</div>
     </div>
@@ -257,9 +258,12 @@ async function boot(){
   PEOPLE=pe;
   $('statline').textContent=`${fmt(st.m)} messages · ${pe.length} conversations · indexed locally`;
   $('pkgLabel').textContent=(st.package||'Package').split(/[\\/]/).pop()||'Package';
+  pkCurrent=st.package||null;
+  renderPkgMenu();
   renderList();
 }
 function showSetup(){
+  pkCurrent=null;renderPkgMenu();
   $('setup').classList.remove('hidden');
   $('side').classList.add('hidden');$('chat').classList.add('hidden');
 }
@@ -269,9 +273,17 @@ function hideSetup(st){
 }
 /* ---------- package picker (server-side folder browser) ---------- */
 let pkPath=null, pkHome=null, pkCurrent=null;
+function renderPkgMenu(){
+  const el=$('pkgCur'); if(!el)return;
+  el.innerHTML=pkCurrent
+    ?`<div class="note" style="margin-bottom:2px">Currently loaded</div><div class="mono" style="font-size:11px;color:var(--acc2);word-break:break-all">${esc(pkCurrent)}</div>`
+    :`<span style="color:var(--red);font-size:12px">No package loaded</span>`;
+}
 function togglePkgMenu(e){
   const m=$('pkgMenu');
   m.classList.toggle('hidden');
+  if(!m.classList.contains('hidden'))  // refresh in case another tab switched packages
+    fetch('/api/stats').then(r=>r.json()).then(st=>{pkCurrent=st.empty?null:(st.package||null);renderPkgMenu();}).catch(()=>{});
   if(!m.classList.contains('hidden')){
     const close=ev=>{if(!document.getElementById('pkgMenuWrap').contains(ev.target)){m.classList.add('hidden');document.removeEventListener('click',close);}};
     setTimeout(()=>document.addEventListener('click',close),0);
