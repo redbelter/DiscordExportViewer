@@ -10,6 +10,8 @@ A private, offline web app for browsing your **Discord data package** (the
 - 📷 **Per-person gallery** — click a person, see their media wall; images/videos/audio/files
 - 🖼️ **Attachments cached locally** — including spoiler-tagged ones (shown blurred until you click)
 - 📁 **Point at any package from the web UI** — no config files; the 📁 menu re-points to another package or **resets to the setup screen** anytime
+- 🗜️ **Reads the raw `request_data.zip` directly** — no need to unzip it first; the picker lists package `.zip`s and loads them in place
+- ✨ **Built-in demo** — one click loads a small synthetic package (fake people, generated images, a spoiler) so you can see what the viewer does before touching your own data
 - 🔒 **100% local.** No account, no tokens, no internet needed after the optional attachment download.
 
 Works on Windows, macOS, Linux. Requires **Python 3.8+** (nothing else to install).
@@ -30,6 +32,9 @@ Works on Windows, macOS, Linux. Requires **Python 3.8+** (nothing else to instal
 
 ### Spoiler-aware previews — blurred until you click
 ![spoiler](docs/screenshots/spoiler.png)
+
+### Demo mode — one click, zero data required
+![demo](docs/screenshots/demo_mode.png)
 
 ### First run — pick your package right in the browser (📁 menu re-points or resets anytime)
 ![picker](docs/screenshots/package_menu.png)

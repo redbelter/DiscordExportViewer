@@ -5,6 +5,8 @@ Serves read-only data from dm.db (built by build_dm_db.py).
 Port: config.json {"port": N} or DM_PORT env, default 5055.
 """
 import json, os, re, sqlite3, subprocess, sys, threading
+import zipfile
+from pkgopen import open_pkg_at
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -89,6 +91,22 @@ def list_dir(path):
         except (PermissionError, OSError):
             pass
     out["is_package"] = os.path.isdir(os.path.join(path, "Messages"))
+    # .zip files that ARE a Discord data package (raw request_data.zip works directly)
+    out["zips"] = []
+    for name in entries:
+        if not name.lower().endswith(".zip") or name.startswith("."):
+            continue
+        fp = os.path.join(path, name)
+        try:
+            if not os.path.isfile(fp) or not zipfile.is_zipfile(fp):
+                continue
+            with zipfile.ZipFile(fp) as zf:
+                names = zf.namelist()[:40000]
+            leaf = [n.rsplit("/", 1)[-1] for n in names]
+            if "messages.json" in leaf and "user.json" in leaf:
+                out["zips"].append({"name": name, "bytes": os.path.getsize(fp)})
+        except Exception:
+            pass
     return out
 
 
@@ -103,13 +121,14 @@ def set_package(pkg):
     """Validate a data package, persist it to config.json, rebuild the index."""
     import build_dm_db
     pkg = os.path.abspath(pkg)
-    if not os.path.isdir(os.path.join(pkg, "Messages")):
-        if os.path.isdir(os.path.join(pkg, "package")):
-            pkg = os.path.join(pkg, "package")
-        else:
-            raise ValueError("that folder has no Messages/ inside — it isn't an unzipped Discord data package")
-    if not os.path.isdir(os.path.join(pkg, "Account")):
-        raise ValueError("no Account/ folder — point at the main folder inside your request_data.zip")
+    try:
+        probe = open_pkg_at(pkg)
+    except Exception:
+        raise ValueError("not a folder or .zip file")
+    if probe is None or not probe.isdir("Messages"):
+        raise ValueError("no Messages/ inside — pick the folder (or .zip) extracted from request_data.zip")
+    if not probe.exists("Account"):
+        raise ValueError("no Account/ folder — point at the main export, not a sub-folder")
     prev = CFG.get("package") or CFG.get("last_package")
     # re-picking the folder that's already indexed with a healthy index → no-op
     # (avoids a needless rebuild, which would blank the attachment gallery)
@@ -130,13 +149,12 @@ def set_package(pkg):
     with open(os.path.join(HERE, "config.json"), "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
     CFG.clear(); CFG.update(cfg)
-    # switching to a DIFFERENT package means the old media cache is stale — clear it.
-    # (after /api/reset, package is gone but last_package records the folder the cache belongs to)
-    import shutil
-    if prev and os.path.abspath(prev) != os.path.abspath(pkg):
-        att_dir = os.path.join(HERE, "attachments")
-        if os.path.isdir(att_dir):
-            shutil.rmtree(att_dir, ignore_errors=True)
+    # NOTE: we deliberately do NOT delete the attachments cache when switching
+    # packages. The gallery reads its registry from the (rebuilt) index db, so a
+    # stale cache can never mix two packages' media — and keeping it means
+    # switching back (e.g. demo -> your real package) re-adopts the files on
+    # disk instantly with zero re-downloads. (fetch_attachments.py adopts files
+    # already present and marks them ok.)
     # release our handle on the old dm.db before build_dm_db replaces it
     try:
         con.close()
@@ -276,7 +294,13 @@ class H(BaseHTTPRequestHandler):
                 r["username"] = meta("username") or "You"
                 r["attachments_cached"] = has_attachments()
                 r["package"] = CFG.get("package") or meta("package")
+                r["local_media"] = (meta("n_local") and int(meta("n_local")) > 0)
                 return self._send(200, json.dumps(r).encode())
+
+            if p == "/api/demo":
+                d = os.path.join(HERE, "demo", "package.zip")
+                return self._send(200, json.dumps({"available": os.path.isfile(d),
+                                                   "path": d if os.path.isfile(d) else None}).encode())
 
             if p == "/api/browse":
                 path = qs.get("path") or ""

@@ -136,6 +136,7 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
       <h2 style="margin:10px 0 6px">Point me at your Discord data package</h2>
       <p class="note" style="margin:0 0 18px">Request your data in Discord (<span class="mono">Settings → Privacy &amp; Safety → Request Data</span>), unzip <span class="mono">request_data.zip</span>, then pick the folder that contains <span class="mono">Messages/</span>. Nothing ever leaves this machine.</p>
       <button class="fbtn" style="padding:10px 22px;font-size:14px" onclick="openPicker()">📂 Choose folder…</button>
+      <div style="margin-top:10px"><a href="javascript:void 0" id="demoBtn" onclick="loadDemo()" style="font-size:12.5px;color:var(--acc2)">✨ or browse a small demo package first</a></div>
       <div id="setupMsg" class="note" style="margin-top:14px"></div>
     </div>
   </div>
@@ -189,6 +190,7 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
   <div style="padding:12px 18px;border-top:1px solid var(--bd);display:flex;gap:10px;align-items:center">
     <button class="fbtn" style="flex:none;padding:7px 14px" id="pkPick" onclick="pickHere()">📂 Use this folder</button>
     <span id="pkMsg" class="note" style="flex:1"></span>
+    <a href="javascript:void 0" id="pkDemo" onclick="loadDemo()" style="font-size:12px;color:var(--acc2);text-decoration:none;flex:none;margin-right:4px">✨ demo</a>
     <button class="fbtn" style="flex:none;padding:7px 14px" onclick="closePicker()">Cancel</button>
   </div>
  </div>
@@ -254,6 +256,18 @@ async function boot(){
   const st=await fetch('/api/stats').then(r=>r.json()).catch(e=>null);
   if(!st||st.empty){showSetup();return;}
   hideSetup(st);
+  if(st.local_media&&!st.attachments_cached){
+    // package has media bundled inside it (folder or zip) — adopt it into the
+    // local cache, then reload once when ready. No internet needed.
+    $('statline').textContent='unpacking media from the package\u2026';
+    await fetch('/api/fetch',{method:'POST'}).catch(()=>{});
+    for(let i=0;i<40;i++){
+      await new Promise(r=>setTimeout(r,1000));
+      const s2=await fetch('/api/stats').then(r=>r.json()).catch(()=>null);
+      if(s2&&s2.attachments_cached){location.replace(location.pathname);return;}
+    }
+    location.replace(location.pathname);return;
+  }
   const pe=await fetch('/api/people').then(r=>r.json());
   PEOPLE=pe;
   $('statline').textContent=`${fmt(st.m)} messages · ${pe.length} conversations · indexed locally`;
@@ -319,6 +333,11 @@ async function browse(path){
     const isCur=pkCurrent&&nrm2(full)===nrm2(pkCurrent);
     return `<div class="pkid${isCur?' pkcur':''}" onclick="browse(${jp(full)})">📁 <span>${esc(n)}</span>${isCur?'<span class="pkis">● loaded</span>':''}</div>`;
   }).join('');
+  html+=(d.zips||[]).map(z=>{
+    const full=(d.path?d.path.replace(/[\\/]+$/,'')+ (/[\\]$/.test(d.path)?'\\':'/') : '')+z.name;
+    const cur=pkCurrent&&nrm2(full)===nrm2(pkCurrent);
+    return `<div class="pkid${cur?' pkcur':''}" onclick="pickZip(${jp(full)})">🗜️ <span>${esc(z.name)}</span><span class="pkis">${cur?'● loaded':'package zip · '+(z.bytes/1048576).toFixed(1)+' MB'}</span></div>`;
+  }).join('');
   $('pkList').innerHTML=html;
 }
 async function pickHere(){
@@ -327,6 +346,17 @@ async function pickHere(){
   const r=await fetch('/api/package',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:pkPath})}).then(r=>r.json());
   if(r.error){$('pkMsg').textContent='⚠️ '+r.error;return;}
   closePicker();location.reload();
+}
+async function pickZip(path){
+  $('pkMsg').textContent='indexing… (a few seconds)';
+  const r=await fetch('/api/package',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})}).then(r=>r.json());
+  if(r.error){$('pkMsg').textContent='⚠️ '+r.error;return;}
+  closePicker();location.reload();
+}
+async function loadDemo(){
+  const d=await fetch('/api/demo').then(r=>r.json()).catch(()=>null);
+  if(!d||!d.available){const m=$('setupMsg')||$('pkMsg');if(m)m.textContent='demo package not found (run: python make_demo.py)';return;}
+  await pickZip(d.path);
 }
 function renderList(){
   const q=$('q').value.trim().toLowerCase();

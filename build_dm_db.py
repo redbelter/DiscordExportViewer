@@ -1,17 +1,21 @@
 """Build dm.db — SQLite FTS5 index over any Discord data package.
 
-Generic version: figures out everything it needs from the package itself.
+A package can be a folder OR a .zip (raw request_data.zip works too).
 
 Usage:
-    python build_dm_db.py                       # auto-discover the package
-    python build_dm_db.py C:\\path\\to\\package    # or point it explicitly
+    python build_dm_db.py                         # auto-discover the package
+    python build_dm_db.py C:\\path\\to\\package       # folder
+    python build_dm_db.py C:\\path\\to\\request_data.zip
 
 Auto-discovery looks for:
   1. config.json  {"package": "C:\\...\\package"} next to this script
   2. $DISCORD_PACKAGE env var
-  3. a folder literally named "package" containing Messages/ on the Desktop or home
+  3. a folder named "package" containing Messages/ on the Desktop / home / Downloads
 """
 import json, os, re, sqlite3, sys, time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pkgopen import open_pkg, open_pkg_at
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -19,36 +23,39 @@ CHANNEL_TYPES = {"DM", "GROUP_DM", "GUILD_TEXT", "PUBLIC_THREAD", "PRIVATE_THREA
 
 
 def find_package():
-    """Locate the Discord data package (the folder containing Messages/ + Account/)."""
-    def ok(p):
-        return p and os.path.isdir(os.path.join(p, "Messages"))
+    """Locate the Discord data package (folder containing Messages/ + Account/, or a .zip)."""
+    def okp(p):
+        try:
+            pkg = open_pkg(p)
+            return pkg is not None and pkg.isdir("Messages")
+        except Exception:
+            return False
     # 1. config.json
     cfg = os.path.join(HERE, "config.json")
     if os.path.isfile(cfg):
         try:
             p = json.load(open(cfg, encoding="utf-8")).get("package")
-            if p and os.path.isdir(p):
-                if ok(p):
-                    return p
-                m = os.path.join(p, "package")
-                if ok(m):
-                    return m
+            if p and okp(p):
+                return p
         except Exception:
             pass
     # 2. env var
     p = os.environ.get("DISCORD_PACKAGE")
-    if p and ok(p):
+    if p and okp(p):
         return p
-    # 3. scan common spots for a folder that looks like a package
+    # 3. scan common spots for a folder/zip that looks like a package
     home = os.path.expanduser("~")
     cands = []
     for root in (os.path.join(home, "Desktop"), home, os.path.join(home, "Downloads")):
         if not os.path.isdir(root):
             continue
         try:
-            for name in sorted(os.listdir(root)):
+            for name in sorted(os.listdir(root), key=str.lower):
                 fp = os.path.join(root, name)
-                if os.path.isdir(fp):
+                if os.path.isfile(fp) and name.lower().endswith(".zip") and (
+                        "request_data" in name.lower() or "package" in name.lower()):
+                    cands.append(fp)
+                elif os.path.isdir(fp):
                     cands.append(fp)
                     try:
                         for sub in sorted(os.listdir(fp)):
@@ -60,8 +67,12 @@ def find_package():
         except Exception:
             pass
     for c in cands:
-        if ok(c) and os.path.isdir(os.path.join(c, "Account")):
-            return c
+        if okp(c):
+            try:
+                if open_pkg(c).exists("Account"):
+                    return c
+            except Exception:
+                pass
     return None
 
 
@@ -85,7 +96,11 @@ def resolve_name(ch_label, recips, id2name, ME, kind):
 
 
 def build(base, out):
+    """base: folder path, .zip path, or an open pkg object."""
     t0 = time.time()
+    pkg = base if hasattr(base, "read_json") else open_pkg_at(base)
+    base_path = base if isinstance(base, str) else pkg.path
+
     if os.path.exists(out):
         os.remove(out)
     con = sqlite3.connect(out)
@@ -111,17 +126,11 @@ def build(base, out):
       CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT);
     """)
 
-    u = {}
-    upath = os.path.join(base, "Account", "user.json")
-    if os.path.isfile(upath):
-        u = json.load(open(upath, encoding="utf-8"))
+    u = pkg.read_json("Account/user.json", {}) or {}
     ME = u.get("id") or "?"
     uname = u.get("global_name") or u.get("username") or "You"
 
-    mi = {}
-    mipath = os.path.join(base, "Messages", "index.json")
-    if os.path.isfile(mipath):
-        mi = json.load(open(mipath, encoding="utf-8"))
+    mi = pkg.read_json("Messages/index.json", {}) or {}
 
     id2name = {}
     for r in u.get("relationships", []):
@@ -129,18 +138,17 @@ def build(base, out):
         if uu.get("id"):
             id2name[uu["id"]] = uu.get("global_name") or uu.get("username") or "?"
 
-    mdir = os.path.join(base, "Messages")
     rows_msg, rows_ppl = [], []
     mid = 0
+    n_local_total = 0
     link_re = re.compile(r"https?://")
 
-    for d in sorted(os.listdir(mdir)):
-        cdir = os.path.join(mdir, d)
-        if not os.path.isdir(cdir):
-            continue
+    for d in pkg.subdirs("Messages"):
         try:
-            ch = json.load(open(os.path.join(cdir, "channel.json"), encoding="utf-8"))
+            ch = pkg.read_json("Messages/%s/channel.json" % d)
         except Exception:
+            ch = None
+        if not ch:
             continue
         ctype = ch.get("type")
         if ctype not in CHANNEL_TYPES:
@@ -149,26 +157,25 @@ def build(base, out):
         ch_id = str(ch.get("id") or d.lstrip("c"))
         ch_label = mi.get(ch_id)
         if not ch_label:
-            # guild channel labels live under the guild id sometimes
             gid = str(ch.get("guild_id") or "")
             ch_label = mi.get(gid)
+        n_local = 0
         kind = {"DM": "dm", "GROUP_DM": "group"}.get(ctype, "guild")
         name2 = resolve_name(ch_label, recips, id2name, ME, kind)
         name = name2
-        mp = os.path.join(cdir, "messages.json")
-        if not os.path.exists(mp):
-            continue
         try:
-            ms = json.load(open(mp, encoding="utf-8"))
+            ms = pkg.read_json("Messages/%s/messages.json" % d)
         except Exception:
-            continue
+            ms = None
         if not ms:
             continue
         days = set(); att = 0; links = 0; first = last = None
         for m in ms:
             ts = m.get("Timestamp") or ""
             c = m.get("Contents") or ""
-            a = bool(m.get("Attachments"))
+            av = m.get("Attachments")
+            a = bool(av)
+            if isinstance(av, str) and "local://" in av: n_local += 1
             mid += 1
             # the export contains ONLY messages you sent (Discord policy)
             rows_msg.append((mid, d, ts, ts[:10], c, 1 if a else 0, str(m.get("ID", "")), "me"))
@@ -178,6 +185,7 @@ def build(base, out):
                 if last  is None or ts > last:  last = ts
             if a: att += 1
             if link_re.search(c): links += 1
+        n_local_total += n_local
         rows_ppl.append((d, name, name2, kind, json.dumps(recips), len(ms), first, last, len(days), att, links))
 
     con.executemany("INSERT INTO people VALUES(?,?,?,?,?,?,?,?,?,?,?)", rows_ppl)
@@ -186,14 +194,15 @@ def build(base, out):
     con.commit()
     con.execute("INSERT INTO fts(fts) VALUES('optimize')")
     con.executemany("INSERT INTO meta VALUES(?,?)", [
-        ("username", uname), ("owner_id", ME), ("package", base),
+        ("username", uname), ("owner_id", ME), ("package", base_path),
+        ("pkg_kind", pkg.kind), ("n_local", str(n_local_total)),
         ("created", time.strftime("%Y-%m-%d %H:%M:%S"))])
     con.commit()
     n = con.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
     p = con.execute("SELECT COUNT(*) FROM people").fetchone()[0]
     con.close()
-    print(f"built {out}: {p} conversations, {n} messages in {time.time()-t0:.1f}s  (owner: {uname})")
-    return base
+    print(f"built {out}: {p} conversations, {n} messages in {time.time()-t0:.1f}s  (owner: {uname}, {pkg.kind})")
+    return base_path
 
 
 def main():
@@ -201,15 +210,13 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     if args:
         base = args[0]
-        if not os.path.isdir(os.path.join(base, "Messages")) and os.path.isdir(os.path.join(base, "package")):
-            base = os.path.join(base, "package")
     else:
         base = find_package()
-    if not base:
+    if not base or not open_pkg(base).isdir("Messages"):
         print('Could not find a Discord data package.')
-        print('Usage:  python build_dm_db.py C:\\path\\to\\package')
-        print('   or:  create config.json next to this script:  {"package": "C:\\\\path\\\\to\\\\package"}')
-        print('        (point it at the folder extracted from your request_data.zip — the one containing Messages/)')
+        print('Usage:  python build_dm_db.py C:\\path\\to\\package   (folder or request_data.zip)')
+        print('   or:  create config.json next to this script:  {"package": "C:\\path\\to\\package"}')
+        print('        (point it at the folder extracted from request_data.zip — the one containing Messages/)')
         sys.exit(1)
     out = os.environ.get("DM_DB", os.path.join(HERE, "dm.db"))
     build(base, out)

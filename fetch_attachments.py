@@ -28,26 +28,22 @@ CDN_HOSTS = ("cdn.discordapp.com", "media.discordapp.net")
 CHANNEL_TYPES = {"DM", "GROUP_DM", "GUILD_TEXT", "PUBLIC_THREAD", "PRIVATE_THREAD", "GUILD_VOICE"}
 
 
-def collect(base):
-    """yield (channel_dir, discord_msg_id, url) for every Discord-CDN attachment URL"""
+def collect(pkg):
+    """yield (channel_dir, discord_msg_id, url) for every Discord-CDN attachment URL.
+    pkg = a pkgopen package (folder OR zip)."""
     out = []
-    mdir = os.path.join(base, "Messages")
-    for d in sorted(os.listdir(mdir)):
-        cdir = os.path.join(mdir, d)
-        if not os.path.isdir(cdir):
-            continue
+    for d in pkg.subdirs("Messages"):
         try:
-            ch = json.load(open(os.path.join(cdir, "channel.json"), encoding="utf-8"))
+            ch = pkg.read_json("Messages/%s/channel.json" % d)
         except Exception:
             continue
-        if ch.get("type") not in CHANNEL_TYPES:
-            continue
-        mp = os.path.join(cdir, "messages.json")
-        if not os.path.exists(mp):
+        if not ch or ch.get("type") not in CHANNEL_TYPES:
             continue
         try:
-            msgs = json.load(open(mp, encoding="utf-8"))
+            msgs = pkg.read_json("Messages/%s/messages.json" % d)
         except Exception:
+            continue
+        if not msgs:
             continue
         for m in msgs:
             a = m.get("Attachments")
@@ -56,6 +52,9 @@ def collect(base):
                 for url in URL_RE.findall(a):
                     if any(h in url for h in CDN_HOSTS):
                         out.append((d, m.get("ID"), url)); seen.add(url)
+                # package-bundled media: local:// paths inside the package (folder or zip)
+                for url in re.findall(r"local://[\w./\-]+", a):
+                    out.append((d, m.get("ID"), url)); seen.add(url)
             # some images were pasted as bare URLs in the message body, not the Attachments field
             c = m.get("Contents") or ""
             for url in URL_RE.findall(c):
@@ -92,8 +91,16 @@ def main():
     if not pkg:
         import build_dm_db
         pkg = build_dm_db.find_package()
-    if not pkg or not os.path.isdir(os.path.join(pkg, "Messages")):
-        print("Could not find the data package. Pass  --package C:\\path\\to\\package")
+    if not pkg:
+        print("Could not find the data package. Pass  --package C:\\path\\to\\package   (folder or request_data.zip)")
+        sys.exit(1)
+    from pkgopen import open_pkg
+    try:
+        pkg = open_pkg(pkg)
+        if not pkg.isdir("Messages"):
+            raise ValueError("no Messages/ inside")
+    except Exception as e:
+        print(f"package unusable ({e}). Pass  --package C:\\path\\to\\package")
         sys.exit(1)
     if not os.path.isfile(DB):
         print(f"{DB} missing — run build_dm_db.py first.")
@@ -138,6 +145,26 @@ def main():
                         (d, str(mid), url)).fetchone()
                 if row and row[1] == "ok" and row[0] and os.path.exists(os.path.join(HERE, row[0])):
                     stats["skip"] += 1
+                elif url.startswith("local://"):
+                    # media bundled inside the data package — no network needed
+                    rel = url[len("local://"):]
+                    name = re.sub(r"[^\w.\-]", "_", rel.replace("/", "_"))
+                    path = os.path.join(CACHE, name)
+                    if not (os.path.exists(path) and os.path.getsize(path) > 0):
+                        try:
+                            data = pkg.read(rel)
+                        except Exception as e:
+                            raise FileNotFoundError(f"{url}: {e}")
+                        with open(path + ".part", "wb") as f:
+                            f.write(data)
+                        os.replace(path + ".part", path)
+                        stats["dl"] += 1
+                    else:
+                        stats["skip"] += 1
+                    with lock:
+                        con.execute(
+                            "UPDATE attachments SET file=?, bytes=?, status='ok' WHERE key=? AND discord_id=? AND url=?",
+                            (f"attachments/{name}", os.path.getsize(path), d, str(mid), url))
                 else:
                     name = safe_name(url, mid)
                     path = os.path.join(CACHE, name)
