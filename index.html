@@ -120,6 +120,7 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
     <div id="pkgMenu" class="hidden" style="position:absolute;right:0;top:calc(100% + 6px);background:var(--panel2);border:1px solid var(--bd);border-radius:10px;z-index:150;min-width:250px;max-width:360px;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden">
       <div id="pkgCur" style="padding:9px 14px;border-bottom:1px solid var(--bd);cursor:default"></div>
       <div class="pkgmi" onclick="openPicker()">📂 Choose another folder…</div>
+      <div class="pkgmi" onclick="loadDemo()">✨ Try the demo package</div>
       <div class="pkgmi" onclick="resetSetup()" style="color:var(--red)">⟲ Reset to setup screen…</div>
     </div>
   </div>
@@ -136,7 +137,7 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
       <h2 style="margin:10px 0 6px">Point me at your Discord data package</h2>
       <p class="note" style="margin:0 0 18px">Request your data in Discord (<span class="mono">Settings → Privacy &amp; Safety → Request Data</span>), unzip <span class="mono">request_data.zip</span>, then pick the folder that contains <span class="mono">Messages/</span>. Nothing ever leaves this machine.</p>
       <button class="fbtn" style="padding:10px 22px;font-size:14px" onclick="openPicker()">📂 Choose folder…</button>
-      <div style="margin-top:10px"><a href="javascript:void 0" id="demoBtn" onclick="loadDemo()" style="font-size:12.5px;color:var(--acc2)">✨ or browse a small demo package first</a></div>
+      <div style="margin-top:12px"><button class="fbtn" style="padding:8px 18px;font-size:13px" id="demoBtn" onclick="loadDemo()">✨ Try the demo package</button></div>
       <div id="setupMsg" class="note" style="margin-top:14px"></div>
     </div>
   </div>
@@ -190,7 +191,6 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
   <div style="padding:12px 18px;border-top:1px solid var(--bd);display:flex;gap:10px;align-items:center">
     <button class="fbtn" style="flex:none;padding:7px 14px" id="pkPick" onclick="pickHere()">📂 Use this folder</button>
     <span id="pkMsg" class="note" style="flex:1"></span>
-    <a href="javascript:void 0" id="pkDemo" onclick="loadDemo()" style="font-size:12px;color:var(--acc2);text-decoration:none;flex:none;margin-right:4px">✨ demo</a>
     <button class="fbtn" style="flex:none;padding:7px 14px" onclick="closePicker()">Cancel</button>
   </div>
  </div>
@@ -354,6 +354,7 @@ async function pickZip(path){
   closePicker();location.reload();
 }
 async function loadDemo(){
+  const m=$('pkgMenu'); if(m)m.classList.add('hidden');
   const d=await fetch('/api/demo').then(r=>r.json()).catch(()=>null);
   if(!d||!d.available){const m=$('setupMsg')||$('pkMsg');if(m)m.textContent='demo package not found (run: python make_demo.py)';return;}
   await pickZip(d.path);

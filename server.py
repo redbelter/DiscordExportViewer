@@ -52,9 +52,30 @@ def open_db():
 open_db()
 
 
+def adopt_existing_cache():
+    """Index exists but has no attachment registry, yet media files are on
+    disk (interrupted switch/restart) — re-adopt them in the background."""
+    try:
+        if has_attachments():
+            return
+        if con.execute("SELECT COUNT(*) FROM people").fetchone()[0] == 0:
+            return
+        att_dir = os.path.join(HERE, "attachments")
+        if not os.path.isdir(att_dir) or not any(os.scandir(att_dir)):
+            return
+        log = open(os.path.join(HERE, "fetch.log"), "ab")
+        FETCH["proc"] = subprocess.Popen(
+            [sys.executable, os.path.join(HERE, "fetch_attachments.py")],
+            cwd=HERE, stdout=log, stderr=log)
+    except Exception:
+        pass
+
+
 def has_attachments():
     return con.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='attachments'").fetchone() is not None
+
+adopt_existing_cache()
 
 
 def meta(k):
@@ -163,6 +184,18 @@ def set_package(pkg):
     build_dm_db.build(pkg, DB)
     with db_lock:
         open_db()
+    # the rebuilt index has no attachment registry — if a media cache already
+    # exists on disk (switched back, or demo), re-adopt it in the background
+    # (files on disk are marked ok with zero downloads).
+    att_dir = os.path.join(HERE, "attachments")
+    try:
+        if os.path.isdir(att_dir) and any(os.scandir(att_dir)):
+            log = open(os.path.join(HERE, "fetch.log"), "ab")
+            FETCH["proc"] = subprocess.Popen(
+                [sys.executable, os.path.join(HERE, "fetch_attachments.py")],
+                cwd=HERE, stdout=log, stderr=log)
+    except OSError:
+        pass
     return pkg
 
 
