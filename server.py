@@ -4,12 +4,15 @@ Run:  python server.py   →  http://127.0.0.1:5055
 Serves read-only data from dm.db (built by build_dm_db.py).
 Port: config.json {"port": N} or DM_PORT env, default 5055.
 """
-import json, os, re, sqlite3, sys
+import json, os, re, sqlite3, subprocess, sys, threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB   = os.path.join(HERE, "dm.db")
+db_lock = threading.RLock()   # reentrant: POST handler + set_package both take it
+FETCH = {"proc": None}
 
 CFG = {}
 _cfgp = os.path.join(HERE, "config.json")
@@ -21,20 +24,30 @@ if os.path.isfile(_cfgp):
 PORT = int(os.environ.get("DM_PORT", CFG.get("port", 5055)))
 
 if not os.path.isfile(DB):
-    print("dm.db not found — building the index from your data package first…")
-    import build_dm_db
-    base = build_dm_db.main()
+    print("dm.db not found — trying auto-discovery…")
+    try:
+        import build_dm_db
+        base = build_dm_db.find_package()
+        if base:
+            build_dm_db.build(base, DB)
+            print(f"built from {base}")
+    except Exception as e:
+        print("auto-build failed:", e)
     if not os.path.isfile(DB):
-        sys.exit(1)
+        print("No index yet — the app will show a setup screen in the browser.")
 
-con = sqlite3.connect(DB, check_same_thread=False)
-con.row_factory = sqlite3.Row
-con.execute("CREATE INDEX IF NOT EXISTS idx_msg_did ON messages(key, discord_id)")
-try:
-    con.execute("CREATE INDEX IF NOT EXISTS idx_att_status ON attachments(status)")
-except sqlite3.OperationalError:
-    pass  # attachments table appears once fetch_attachments.py has run
-con.commit()
+def open_db():
+    global con
+    con = sqlite3.connect(DB, check_same_thread=False)
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute("CREATE INDEX IF NOT EXISTS idx_msg_did ON messages(key, discord_id)")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_att_status ON attachments(status)")
+    except sqlite3.OperationalError:
+        pass  # empty db (setup screen) / attachments table comes later
+    con.commit()
+
+open_db()
 
 
 def has_attachments():
@@ -48,6 +61,75 @@ def meta(k):
         return r[0] if r else None
     except sqlite3.OperationalError:
         return None
+
+
+DRIVE_OK = re.compile(r"^[A-Za-z]:[/\\]$")
+
+def list_dir(path):
+    """List directories under `path` (safe, read-only). Returns dict."""
+    path = os.path.abspath(path)
+    if not os.path.isdir(path):
+        raise ValueError("not a directory")
+    out = {"path": path, "parent": None, "dirs": [], "is_package": None}
+    parent = os.path.dirname(path)
+    if parent and parent != path:
+        out["parent"] = parent
+    if path == os.path.dirname(path.rstrip("/\\")) + os.sep or DRIVE_OK.match(path + os.sep):
+        out["parent"] = None
+    try:
+        entries = sorted(os.listdir(path), key=str.lower)
+    except PermissionError:
+        raise ValueError("permission denied")
+    for name in entries:
+        if name.startswith(".") or name in ("node_modules", "__pycache__"):
+            continue
+        try:
+            if os.path.isdir(os.path.join(path, name)) and not os.path.islink(os.path.join(path, name)):
+                out["dirs"].append(name)
+        except (PermissionError, OSError):
+            pass
+    out["is_package"] = os.path.isdir(os.path.join(path, "Messages"))
+    return out
+
+
+def drive_roots():
+    import string
+    if os.name == "nt":
+        return [f"{c}:\\" for c in string.ascii_uppercase if os.path.isdir(f"{c}:\\")] or ["C:\\"]
+    return ["/"]
+
+
+def set_package(pkg):
+    """Validate a data package, persist it to config.json, rebuild the index."""
+    import build_dm_db
+    pkg = os.path.abspath(pkg)
+    if not os.path.isdir(os.path.join(pkg, "Messages")):
+        if os.path.isdir(os.path.join(pkg, "package")):
+            pkg = os.path.join(pkg, "package")
+        else:
+            raise ValueError("that folder has no Messages/ inside — it isn't an unzipped Discord data package")
+    if not os.path.isdir(os.path.join(pkg, "Account")):
+        raise ValueError("no Account/ folder — point at the main folder inside your request_data.zip")
+    prev = CFG.get("package")
+    cfg = dict(CFG); cfg["package"] = pkg
+    with open(os.path.join(HERE, "config.json"), "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+    CFG.clear(); CFG.update(cfg)
+    # switching to a DIFFERENT package means the old media cache is stale — clear it
+    import shutil
+    if prev and os.path.abspath(prev) != os.path.abspath(pkg):
+        att_dir = os.path.join(HERE, "attachments")
+        if os.path.isdir(att_dir):
+            shutil.rmtree(att_dir, ignore_errors=True)
+    # release our handle on the old dm.db before build_dm_db replaces it
+    try:
+        con.close()
+    except Exception:
+        pass
+    build_dm_db.build(pkg, DB)
+    with db_lock:
+        open_db()
+    return pkg
 
 
 def fts_query(q):
@@ -73,6 +155,46 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _body(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            return json.loads(self.rfile.read(n) or b"{}")
+        except Exception:
+            return {}
+
+    def do_POST(self):
+        u = urlparse(self.path)
+        p = u.path
+        try:
+            if p == "/api/package":
+                body = self._body()
+                pkg = (body.get("path") or "").strip().strip('"')
+                if not pkg:
+                    return self._send(400, json.dumps({"error": "no path"}).encode())
+                with db_lock:
+                    try:
+                        resolved = set_package(pkg)
+                    except Exception:
+                        open_db()   # set_package may have closed the handle mid-flight
+                        raise
+                return self._send(200, json.dumps({"ok": True, "package": resolved}).encode())
+
+            if p == "/api/fetch":
+                proc = FETCH["proc"]
+                if proc and proc.poll() is None:
+                    return self._send(200, json.dumps({"ok": True, "already": True}).encode())
+                log = open(os.path.join(HERE, "fetch.log"), "ab")
+                FETCH["proc"] = subprocess.Popen(
+                    [sys.executable, os.path.join(HERE, "fetch_attachments.py")],
+                    cwd=HERE, stdout=log, stderr=log)
+                return self._send(200, json.dumps({"ok": True, "started": True}).encode())
+
+            return self._send(404, b'{"error":"not found"}')
+        except ValueError as e:
+            return self._send(400, json.dumps({"error": str(e)}).encode())
+        except Exception as e:
+            return self._send(500, json.dumps({"error": str(e)}).encode())
+
     def do_GET(self):
         u = urlparse(self.path)
         p = u.path
@@ -97,12 +219,30 @@ class H(BaseHTTPRequestHandler):
                     return self._send(200, f.read(), ctype)
 
             if p == "/api/stats":
+                if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='people'").fetchone():
+                    return self._send(200, json.dumps({"empty": True, "n": 0, "m": 0, "msgs": 0, "attach": 0,
+                                                       "username": CFG.get("owner") or "You",
+                                                       "attachments_cached": False,
+                                                       "package": CFG.get("package")}).encode())
                 r = dict(con.execute("SELECT COUNT(*) n, SUM(n) m FROM people").fetchone())
                 r["msgs"] = con.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
                 r["attach"] = con.execute("SELECT SUM(attach) FROM messages").fetchone()[0]
                 r["username"] = meta("username") or "You"
                 r["attachments_cached"] = has_attachments()
+                r["package"] = CFG.get("package") or meta("package")
                 return self._send(200, json.dumps(r).encode())
+
+            if p == "/api/browse":
+                path = qs.get("path") or ""
+                try:
+                    if not path:
+                        roots = drive_roots()
+                        return self._send(200, json.dumps(
+                            {"path": "", "parent": None, "dirs": [], "roots": roots,
+                             "is_package": False, "home": os.path.expanduser("~")}).encode())
+                    return self._send(200, json.dumps(list_dir(path)).encode())
+                except ValueError as e:
+                    return self._send(400, json.dumps({"error": str(e)}).encode())
 
             if p == "/api/people":
                 rows = con.execute(

@@ -9,6 +9,7 @@ A private, offline web app for browsing your **Discord data package** (the
 - 🔎 **Instant full-text search** across every message (SQLite FTS5, prefix matching)
 - 📷 **Per-person gallery** — click a person, see their media wall; images/videos/audio/files
 - 🖼️ **Attachments cached locally** — including spoiler-tagged ones (shown blurred until you click)
+- 📁 **Point at any package from the web UI** — no config files; re-point anytime via the 📁 button
 - 🔒 **100% local.** No account, no tokens, no internet needed after the optional attachment download.
 
 Works on Windows, macOS, Linux. Requires **Python 3.8+** (nothing else to install).
@@ -37,19 +38,12 @@ Works on Windows, macOS, Linux. Requires **Python 3.8+** (nothing else to instal
 1. **Request your data** in Discord:
    `User Settings → Privacy & Safety → Request Data` (takes hours–days; you get an email with `request_data.zip`)
 2. **Unzip it.** Inside there's a folder containing `Messages/`, `Account/`, `Servers/` — that's your *package*.
-3. Tell the viewer where it is — any one of these:
-   - create `config.json` next to these scripts:
-     ```json
-     {"package": "C:\\Users\\you\\Downloads\\package"}
-     ```
-   - or set the env var `DISCORD_PACKAGE=/path/to/package`
-   - or pass it: `python build_dm_db.py /path/to/package`
-   - or just leave a folder named `package` on your Desktop — it'll be found automatically
-4. **Run it:**
+3. **Run it:**
    - **Windows:** double-click `Start DM Browser.bat`
    - **anywhere:** `python server.py` → open <http://127.0.0.1:5055>
+4. First run? The app opens a **setup screen** — click **📂 Choose folder…**, browse to your unzipped package (the folder with `Messages/` inside), click **Use this folder**. It indexes in seconds and you're browsing. No config files needed.
 
-First run builds `dm.db` (the full-text index) in a few seconds.
+Nothing else to install, nothing ever leaves your machine.
 
 ### Optional but recommended: cache your attachments
 
@@ -87,7 +81,7 @@ Re-run `python server.py` after fetching so the gallery lights up.
 
 ## Config
 
-`config.json` (all optional):
+`config.json` is created for you when you pick a package in the app. To pre-seed it (or override the port):
 ```json
 {"package": "C:\\path\\to\\package", "port": 5055}
 ```

@@ -94,6 +94,13 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
 .sres-snippet{font-size:13.5px}
 .sres-snippet b{background:color-mix(in srgb,var(--gold) 75%,#fff);color:#000;border-radius:3px;padding:0 2px}
 #side.hidden,#chat.hidden,#sres.hidden,#gal.hidden{display:none}
+#picker.hidden{display:none!important}
+#setup.hidden{display:none}
+.mono{font-family:ui-monospace,Consolas,monospace}
+#setup{flex:1;display:flex;align-items:center;justify-content:center;padding:30px}
+.pkid{padding:8px 10px;border-radius:7px;cursor:pointer;display:flex;gap:8px;align-items:center;border:1px solid transparent}
+.pkid:hover{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:var(--bd)}
+.pkis{color:var(--green);font-size:11px;margin-left:auto;font-weight:700}
 .jump{color:var(--acc2);cursor:pointer;font-size:11px;text-decoration:underline}
 ::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:6px}
 @media (max-width:800px){#side{width:230px}}
@@ -104,6 +111,7 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
   <h1>💬 DM Browser</h1>
   <span class="sub" id="statline">…</span>
   <div class="spacer"></div>
+  <a id="pkgBtn" href="javascript:void 0" onclick="openPicker()" style="color:var(--mut);font-size:12px;text-decoration:none;border:1px solid var(--bd);padding:6px 12px;border-radius:8px" title="choose which Discord data package to read">📁 <span id="pkgLabel">Package…</span></a>
   <div id="modeTabs">
     <div class="mtab on" data-m="chat">Chat view</div>
     <div class="mtab" data-m="search">Search all DMs</div>
@@ -111,6 +119,15 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
   </div>
 </header>
 <main>
+  <div id="setup" class="hidden">
+    <div style="max-width:520px;text-align:center;background:var(--panel);border:1px solid var(--bd);border-radius:14px;padding:34px 30px">
+      <div style="font-size:44px">📁</div>
+      <h2 style="margin:10px 0 6px">Point me at your Discord data package</h2>
+      <p class="note" style="margin:0 0 18px">Request your data in Discord (<span class="mono">Settings → Privacy &amp; Safety → Request Data</span>), unzip <span class="mono">request_data.zip</span>, then pick the folder that contains <span class="mono">Messages/</span>. Nothing ever leaves this machine.</p>
+      <button class="fbtn" style="padding:10px 22px;font-size:14px" onclick="openPicker()">📂 Choose folder…</button>
+      <div id="setupMsg" class="note" style="margin-top:14px"></div>
+    </div>
+  </div>
   <div id="side">
     <div id="sideTop">
       <input id="q" placeholder="Filter conversations… (1/3 = 1st/3rd)">
@@ -148,6 +165,21 @@ img.blurmed,video.blurmed{outline:2px dashed rgba(255,255,255,.25)}
   </div>
 </main>
 <div id="lightbox" onclick="this.style.display='none';this.querySelector('video')&&this.querySelector('video').pause()">
+</div>
+<div id="picker" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;display:flex;align-items:center;justify-content:center">
+ <div style="width:min(680px,92vw);max-height:80vh;background:var(--panel);border:1px solid var(--bd);border-radius:14px;display:flex;flex-direction:column;overflow:hidden">
+  <div style="padding:14px 18px;border-bottom:1px solid var(--bd)">
+    <b>Where is your Discord data package?</b>
+    <div class="note" style="margin-top:4px">Pick the folder you extracted from <span class="mono">request_data.zip</span> — the one that contains <span class="mono">Messages/</span> and <span class="mono">Account/</span>.</div>
+    <div id="pkPath" class="mono" style="margin-top:8px;font-size:12px;color:var(--acc2);word-break:break-all"></div>
+  </div>
+  <div id="pkList" style="flex:1;overflow-y:auto;padding:8px 18px;min-height:200px"></div>
+  <div style="padding:12px 18px;border-top:1px solid var(--bd);display:flex;gap:10px;align-items:center">
+    <button class="fbtn" style="flex:none;padding:7px 14px" id="pkPick" onclick="pickHere()">📂 Use this folder</button>
+    <span id="pkMsg" class="note" style="flex:1"></span>
+    <button class="fbtn" style="flex:none;padding:7px 14px" onclick="closePicker()">Cancel</button>
+  </div>
+ </div>
 </div>
 <script>
 const $=id=>document.getElementById(id);
@@ -205,12 +237,52 @@ function lb(src,type,spoiler){const box=$('lightbox');
   box.style.display='flex';}
 
 async function boot(){
-  const [st,pe]=await Promise.all([
-    fetch('/api/stats').then(r=>r.json()),
-    fetch('/api/people').then(r=>r.json())]);
+  const st=await fetch('/api/stats').then(r=>r.json()).catch(e=>null);
+  if(!st||st.empty){showSetup();return;}
+  hideSetup(st);
+  const pe=await fetch('/api/people').then(r=>r.json());
   PEOPLE=pe;
   $('statline').textContent=`${fmt(st.m)} messages · ${pe.length} conversations · indexed locally`;
+  $('pkgLabel').textContent=(st.package||'Package').split(/[\\/]/).pop()||'Package';
   renderList();
+}
+function showSetup(){
+  $('setup').classList.remove('hidden');
+  $('side').classList.add('hidden');$('chat').classList.add('hidden');
+}
+function hideSetup(st){
+  $('setup').classList.add('hidden');
+  $('side').classList.remove('hidden');$('chat').classList.remove('hidden');
+}
+/* ---------- package picker (server-side folder browser) ---------- */
+let pkPath=null, pkHome=null;
+function openPicker(){pkPath=null;browse(null);}
+function closePicker(){$('picker').classList.add('hidden');}
+async function browse(path){
+  $('pkList').innerHTML='<div class="loading">reading…</div>';
+  let d=await fetch('/api/browse'+(path?`?path=${encodeURIComponent(path)}`:'')).then(r=>r.json());
+  if(d.error){$('pkList').innerHTML=`<div class="empty">${esc(d.error)} — <a href="javascript:void 0" onclick="browse(null)">back</a></div>`;return;}
+  if(!path&&d.home){pkHome=d.home;const hd=await fetch(`/api/browse?path=${encodeURIComponent(d.home)}`).then(r=>r.json());if(!hd.error)d=hd;}
+  pkPath=d.path||pkPath;
+  $('pkPath').textContent=d.path||'';
+  $('pkMsg').textContent=d.is_package?'✓ this is a valid data package — click "Use this folder"':'';
+  $('pkPick').disabled=!d.is_package;
+  $('pkPick').style.opacity=d.is_package?1:.45;
+  let html='';
+  if(d.roots)html+=d.roots.map(r=>`<div class="pkid" onclick="browse(${JSON.stringify(r)})">💽 <span>${esc(r)}</span></div>`).join('');
+  if(d.parent)html+=`<div class="pkid" onclick="browse(${JSON.stringify(d.parent)})">⬆ <span class="note">up to ${esc(d.parent)}</span></div>`;
+  html+=d.dirs.map(n=>{
+    const full=(d.path?d.path.replace(/[\\/]+$/,'')+ (/[\\]$/.test(d.path)?'\\':'/') : '')+n;
+    return `<div class="pkid" onclick="browse(${JSON.stringify(full)})">📁 <span>${esc(n)}</span></div>`;
+  }).join('');
+  $('pkList').innerHTML=html;
+}
+async function pickHere(){
+  if(!pkPath)return;
+  $('pkMsg').textContent='indexing… (a few seconds)';
+  const r=await fetch('/api/package',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:pkPath})}).then(r=>r.json());
+  if(r.error){$('pkMsg').textContent='⚠️ '+r.error;return;}
+  closePicker();location.reload();
 }
 function renderList(){
   const q=$('q').value.trim().toLowerCase();
