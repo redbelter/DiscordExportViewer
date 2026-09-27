@@ -34,9 +34,9 @@ Works on Windows, macOS, Linux. Requires **Python 3.8+** (nothing else to instal
 ![spoiler](docs/screenshots/spoiler.png)
 
 ### Demo mode — one click, zero data required
-![demo](docs/screenshots/demo_mode.png)
+![setup](docs/screenshots/setup.png)
 
-### First run — pick your package right in the browser (📁 menu re-points or resets anytime)
+### Switch packages anytime — 📁 menu shows what's loaded, re-points, runs the demo, or resets
 ![picker](docs/screenshots/package_menu.png)
 
 *(All screenshots use a synthetic demo package — fake users, generated images.)*
