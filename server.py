@@ -25,17 +25,28 @@ if os.path.isfile(_cfgp):
         CFG = {}
 PORT = int(os.environ.get("DM_PORT", CFG.get("port", 5055)))
 
-if not os.path.isfile(DB):
-    print("dm.db not found — trying auto-discovery…")
-    try:
+def _db_present():
+    return os.path.isfile(DB) and os.path.getsize(DB) > 0
+
+if not _db_present():
+    # NEVER scan the machine and index data on its own — a fresh copy shows
+    # the setup screen and only builds from a package the user picks there.
+    # Exception: rebuild from the package the user ALREADY picked (persisted
+    # in config.json) — that choice was made explicitly, once.
+    if os.path.isfile(DB):
+        os.remove(DB)                      # truncated/corrupt 0-byte db
+    pkg = CFG.get("package")
+    if pkg and os.path.exists(pkg):
+        print("rebuilding index from previously-picked package: %s" % pkg)
         import build_dm_db
-        base = build_dm_db.find_package()
-        if base:
-            build_dm_db.build(base, DB)
-            print(f"built from {base}")
-    except Exception as e:
-        print("auto-build failed:", e)
-    if not os.path.isfile(DB):
+        build_dm_db.build(pkg, DB)
+    elif CFG.get("package"):
+        CFG.pop("package", None)           # picked package no longer exists
+        try:
+            json.dump(CFG, open(_cfgp, "w", encoding="utf-8"), ensure_ascii=False)
+        except Exception:
+            pass
+    if not _db_present():
         print("No index yet — the app will show a setup screen in the browser.")
 
 def open_db():
